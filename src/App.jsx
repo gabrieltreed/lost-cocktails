@@ -2022,7 +2022,7 @@ function CocktailApp() {
           {decades.map(d => (
             <button key={d.id} className={`decade-btn ${!specialTab && activeDec === d.id ? "active" : ""}`}
               onClick={() => { setActiveDec(d.id); setSpecialTab(null); setActiveCard(null); }}>
-              {d.label}
+              {d.label.endsWith('Present') ? <>{d.label.slice(0, 4)}<span style={{textTransform:"none"}}>s</span>{d.label.slice(5)}</> : <>{d.label.slice(0, -1)}<span style={{textTransform:"none"}}>s</span></>}
             </button>
           ))}
           <button className={`decade-btn ${specialTab === "all" ? "active" : ""}`}
