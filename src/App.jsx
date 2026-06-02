@@ -773,6 +773,20 @@ const cocktails = {
       history: "The Stinger appeared in cocktail books from 1913 onward. But its golden age was the postwar era, when cognac's association with European sophistication and crème de menthe's after-dinner freshness combined to create the perfect supper club digestif. Cary Grant's identification with the drink gave it a glamour that sustained it through the 1950s and 60s. It faded with the supper club culture that sustained it.",
       famousQuote: "\"A Stinger is the final, perfect note of a proper evening.\" — Attributed to Cary Grant",
     },
+    {
+      name: "Vieux Carré",
+      badges: ["classic"],
+      glass: "Rocks glass or small mixing glass (as originally served)",
+      garnish: "Lemon twist, optional brandied cherry",
+      method: "Stir",
+      ingredients: ["0.75 oz rye whiskey", "0.75 oz cognac", "0.75 oz sweet vermouth", "0.25 oz Bénédictine", "2 dashes Peychaud's bitters", "2 dashes Angostura bitters"],
+      instructions: ["Combine all ingredients in a mixing glass with ice.", "Stir for 25-30 seconds until thoroughly chilled and diluted.", "Strain into a rocks glass over fresh ice.", "Express a lemon peel over the drink — the oils are essential.", "Garnish with the twisted lemon peel and an optional brandied cherry.", "Note: the original 1938 recipe was built and served directly in a small mixing glass — a perfectly valid approach."],
+      description: "The Vieux Carré is New Orleans in a glass — rye for the Americans, cognac for the French, sweet vermouth for the Italians, Bénédictine for the Benedictine monks, Peychaud's for the Creoles. Every community of the French Quarter is represented. Created in 1938 at the Hotel Monteleone and largely forgotten for decades, it is now recognized as one of the great American cocktails.",
+      region: "Hotel Monteleone, Royal Street, New Orleans, Louisiana; created by head bartender Walter Bergeron, 1938",
+      notable: "The Hotel Monteleone's bar — where the Vieux Carré was born — is now the famous Carousel Bar, a slowly revolving cocktail lounge that turns at one revolution every fifteen minutes. It is still there, still rotating, and still serves the Vieux Carré. The drink is classified by the IBA as an 'Unforgettable' — their designation for classics that are less known than they deserve to be.",
+      history: "Walter Bergeron was born in 1889 and had been bartending at the Hotel Monteleone since at least 1918. During Prohibition he managed a cigar store — what additional activities may have occurred there is unrecorded. When repeal came he returned to the Monteleone, and by 1938 author Stanley Clisby Arthur was documenting his signature creation in Famous New Orleans Drinks and How to Mix 'Em. Bergeron said he created it to honor the Vieux Carré — the French Quarter — where the antique shops and iron lace balconies gave visitors a glimpse into the romance of another day. The drink fused the spirits of every community that had shaped New Orleans: American rye, French cognac, Italian vermouth, and the herbal French liqueur Bénédictine, tied together with both of New Orleans' great bitters. It was largely forgotten outside New Orleans for decades, then rediscovered by the craft cocktail movement as one of the most perfectly constructed drinks in the American canon.",
+      famousQuote: "\"He originated it to give honor to the Vieux Carré, that part of New Orleans where the antique shops and the iron lace balconies give sightseers a glimpse into the romance of another day.\" — Stanley Clisby Arthur, Famous New Orleans Drinks and How to Mix 'Em, 1938",
+    },
   ],
   "1940s": [
     {
