@@ -1600,8 +1600,8 @@ function CocktailApp() {
       const delta = Math.abs(acc.x - lastAcc.x) + Math.abs(acc.y - lastAcc.y) + Math.abs(acc.z - lastAcc.z);
       lastAcc = { x: acc.x || 0, y: acc.y || 0, z: acc.z || 0 };
       const now = Date.now();
-      if (delta > 30 && now - lastShake > 1500) {
-        if (shakeActiveRef.current) return; // overlay already open
+      if (delta > 20 && now - lastShake > 1500) {
+        if (shakeActiveRef.current) return;
         lastShake = now;
         const pool = barCart.size > 0 && makeableCocktails.length > 0 ? makeableCocktails : allCocktails;
         const pick = pool[Math.floor(Math.random() * pool.length)];
@@ -1613,33 +1613,30 @@ function CocktailApp() {
     };
 
     const setupMotion = () => {
+      window.removeEventListener("devicemotion", handleMotion);
       window.addEventListener("devicemotion", handleMotion);
       setShakePermission("granted");
-      localStorage.setItem("coc-shake-perm", "granted");
     };
 
     const requestPermission = async () => {
-      // Check if already granted in a previous session
-      const saved = localStorage.getItem("coc-shake-perm");
-      if (saved === "granted") {
-        setupMotion();
-        return;
-      }
       if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+        // iOS — must request every page load, permission doesn't persist
         try {
           const perm = await DeviceMotionEvent.requestPermission();
           if (perm === "granted") {
             setupMotion();
+            localStorage.setItem("coc-shake-perm", "granted");
           } else {
             setShakePermission("denied");
-            localStorage.setItem("coc-shake-perm", "denied");
           }
-        } catch {
-          setShakePermission("denied");
+        } catch (err) {
+          // Permission call must come from a user gesture — set up a fallback button
+          setShakePermission("needs-gesture");
         }
       } else {
-        // Non-iOS — no permission needed
+        // Android / non-iOS — no permission needed
         setupMotion();
+        setShakePermission("granted");
       }
     };
 
@@ -2363,6 +2360,29 @@ function CocktailApp() {
                     textAlign: "center", marginBottom: 12, fontStyle: "italic",
                   }}>
                     or shake your phone for a random pick 📳
+                  </div>
+                )}
+                {shakePermission === "needs-gesture" && (
+                  <div style={{ textAlign: "center", marginBottom: 12 }}>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const perm = await DeviceMotionEvent.requestPermission();
+                          if (perm === "granted") {
+                            window.addEventListener("devicemotion", () => {});
+                            setShakePermission("granted");
+                          }
+                        } catch(e) {}
+                      }}
+                      style={{
+                        fontFamily: "'Raleway', sans-serif", fontSize: "0.65rem",
+                        fontWeight: 600, letterSpacing: "0.1em",
+                        background: "transparent", border: "1px solid rgba(201,168,76,0.3)",
+                        color: "rgba(201,168,76,0.5)", padding: "6px 14px",
+                        borderRadius: 14, cursor: "pointer",
+                      }}>
+                      📳 Enable shake to randomize
+                    </button>
                   </div>
                 )}
 
