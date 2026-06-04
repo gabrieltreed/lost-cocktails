@@ -1470,6 +1470,9 @@ function CocktailApp() {
   const [shakeResult, setShakeResult] = useState(null);
   const [shakeExpanded, setShakeExpanded] = useState(false);
   const [shakePermission, setShakePermission] = useState("unknown");
+  const [slotRolling, setSlotRolling] = useState(false);
+  const [slotDisplay, setSlotDisplay] = useState("");
+  const slotIntervalRef = useRef(null);
   const shakeActiveRef = useRef(false);
 
   useEffect(() => { localStorage.setItem("coc-fav", JSON.stringify([...favorites])); }, [favorites]);
@@ -1589,6 +1592,38 @@ function CocktailApp() {
   const makeableCocktails = allCocktails.filter(c => getCocktailStatus(c).status === "makeable");
   const almostCocktails = allCocktails.filter(c => getCocktailStatus(c).status === "almost");
 
+  const triggerRoll = (pool) => {
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    const others = allCocktails.filter(c => c.name !== pick.name);
+    setShakeExpanded(false);
+    setShakeResult(pick);
+    setSlotRolling(true);
+    setSlotDisplay("");
+
+    let cycles = 0;
+    const totalCycles = 18;
+
+    const tick = (speed) => {
+      cycles++;
+      const flash = others[Math.floor(Math.random() * others.length)];
+      setSlotDisplay(flash.name);
+
+      let nextSpeed;
+      if (cycles < totalCycles * 0.5) nextSpeed = 60;
+      else if (cycles < totalCycles * 0.75) nextSpeed = 130;
+      else nextSpeed = 230;
+
+      if (cycles >= totalCycles) {
+        setSlotDisplay(pick.name);
+        setSlotRolling(false);
+      } else {
+        slotIntervalRef.current = setTimeout(() => tick(nextSpeed), nextSpeed);
+      }
+    };
+
+    slotIntervalRef.current = setTimeout(() => tick(60), 60);
+  };
+
   // Shake detection
   useEffect(() => {
     let lastShake = 0;
@@ -1604,11 +1639,9 @@ function CocktailApp() {
         if (shakeActiveRef.current) return;
         lastShake = now;
         const pool = barCart.size > 0 && makeableCocktails.length > 0 ? makeableCocktails : allCocktails;
-        const pick = pool[Math.floor(Math.random() * pool.length)];
         try { if (navigator.vibrate) navigator.vibrate([80, 40, 80]); } catch(e) {}
         shakeActiveRef.current = true;
-        setShakeExpanded(false);
-        setShakeResult(pick);
+        triggerRoll(pool);
       }
     };
 
@@ -2000,6 +2033,22 @@ function CocktailApp() {
       background: #C9A84C;
       color: #0d0a04;
       font-family: 'Raleway', sans-serif;
+
+    @keyframes slot-flicker {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    @keyframes slot-settle {
+      0% { transform: scale(1.12); opacity: 0.7; }
+      60% { transform: scale(0.97); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    @keyframes slot-glow {
+      0%, 100% { text-shadow: 0 0 20px rgba(201,168,76,0.4), 0 0 40px rgba(201,168,76,0.2); }
+      50% { text-shadow: 0 0 40px rgba(201,168,76,0.8), 0 0 80px rgba(201,168,76,0.4); }
+    }
+    .slot-rolling { animation: slot-flicker 0.1s ease-in-out infinite; }
+    .slot-settled { animation: slot-settle 0.4s ease-out forwards, slot-glow 2s ease-in-out 0.4s infinite; }
       font-size: 0.8rem;
       font-weight: 700;
       letter-spacing: 0.08em;
@@ -2329,10 +2378,9 @@ function CocktailApp() {
                   {makeableCocktails.length > 0 && (
                     <button
                       onClick={() => {
-                        const pick = makeableCocktails[Math.floor(Math.random() * makeableCocktails.length)];
+                        const pool = makeableCocktails.length > 0 ? makeableCocktails : allCocktails;
                         try { if (navigator.vibrate) navigator.vibrate([60, 30, 60]); } catch(e) {}
-                        setShakeExpanded(false);
-                        setShakeResult(pick);
+                        triggerRoll(pool);
                       }}
                       title="Random cocktail"
                       style={{
@@ -2427,7 +2475,7 @@ function CocktailApp() {
         const cardDec = decades.find(d => d.id === c.decade) || decades[0];
         return (
           <div
-            onClick={() => { shakeActiveRef.current = false; setShakeResult(null); setShakeExpanded(false); }}
+            onClick={() => { if (slotRolling) return; shakeActiveRef.current = false; setShakeResult(null); setShakeExpanded(false); }}
             style={{
               position: "fixed", inset: 0, zIndex: 9999,
               background: "rgba(8,6,15,0.97)",
@@ -2445,9 +2493,7 @@ function CocktailApp() {
                   onClick={e => {
                     e.stopPropagation();
                     const pool = barCart.size > 0 && makeableCocktails.length > 0 ? makeableCocktails : allCocktails;
-                    const pick = pool[Math.floor(Math.random() * pool.length)];
-                    setShakeExpanded(false);
-                    setShakeResult(pick);
+                    triggerRoll(pool);
                   }}
                   style={{ fontSize: "2.5rem", marginBottom: 20, opacity: 0.6, cursor: "pointer" }}>🎲</div>
                 <div style={{
@@ -2463,40 +2509,47 @@ function CocktailApp() {
                 })()}</div>
 
                 <div
-                  onClick={e => { e.stopPropagation(); setShakeExpanded(true); }}
+                  onClick={e => { if (!slotRolling) { e.stopPropagation(); setShakeExpanded(true); } }}
+                  className={slotRolling ? "slot-rolling" : "slot-settled"}
                   style={{
                     fontFamily: "'Cinzel Decorative', serif",
-                    fontSize: "1.7rem", fontWeight: 700,
-                    color: "#C9A84C", textAlign: "center", lineHeight: 1.25,
-                    textShadow: "0 0 40px rgba(201,168,76,0.4)",
+                    fontSize: slotRolling ? "1.1rem" : "1.7rem",
+                    fontWeight: 700,
+                    color: slotRolling ? "rgba(201,168,76,0.55)" : "#C9A84C",
+                    textAlign: "center", lineHeight: 1.25,
                     marginBottom: 32,
-                    cursor: "pointer",
-                    padding: "8px 0",
+                    cursor: slotRolling ? "default" : "pointer",
+                    padding: "8px 16px",
+                    minHeight: 60,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    transition: "font-size 0.15s ease, color 0.15s ease",
                   }}>
-                  {c.name}
+                  {slotDisplay || c.name}
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-                  <div style={{ height: 1, width: 40, background: "rgba(201,168,76,0.2)" }} />
-                  <div
-                    onClick={e => { e.stopPropagation(); setShakeExpanded(true); }}
-                    style={{
-                      fontFamily: "'IM Fell English', serif",
-                      fontStyle: "italic", fontSize: "0.82rem",
-                      color: "rgba(201,168,76,0.55)",
-                      letterSpacing: "0.05em", cursor: "pointer",
-                      padding: "8px 16px",
+                {!slotRolling && (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+                    <div style={{ height: 1, width: 40, background: "rgba(201,168,76,0.2)" }} />
+                    <div
+                      onClick={e => { e.stopPropagation(); setShakeExpanded(true); }}
+                      style={{
+                        fontFamily: "'IM Fell English', serif",
+                        fontStyle: "italic", fontSize: "0.82rem",
+                        color: "rgba(201,168,76,0.55)",
+                        letterSpacing: "0.05em", cursor: "pointer",
+                        padding: "8px 16px",
+                      }}>
+                      Tap here to consult the recipe
+                    </div>
+                    <div style={{
+                      fontFamily: "'Raleway', sans-serif", fontSize: "0.55rem",
+                      color: "rgba(201,168,76,0.2)", letterSpacing: "0.15em",
+                      textTransform: "uppercase", marginTop: 8,
                     }}>
-                    Tap here to consult the recipe
+                      or tap anywhere to dismiss
+                    </div>
                   </div>
-                  <div style={{
-                    fontFamily: "'Raleway', sans-serif", fontSize: "0.55rem",
-                    color: "rgba(201,168,76,0.2)", letterSpacing: "0.15em",
-                    textTransform: "uppercase", marginTop: 8,
-                  }}>
-                    or tap anywhere to dismiss
-                  </div>
-                </div>
+                )}
               </div>
 
             ) : (
