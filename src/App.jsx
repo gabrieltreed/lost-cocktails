@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 const decades = [
   { id: "pre-1900s", label: "Pre-1900s", color: "#2C1810", bg: "#1a0f08", accent: "#C9A84C", gem: "#8B7355" },
@@ -1470,7 +1470,7 @@ function CocktailApp() {
   const [shakeResult, setShakeResult] = useState(null);
   const [shakeExpanded, setShakeExpanded] = useState(false);
   const [shakePermission, setShakePermission] = useState("unknown");
-  const shakeActiveRef = React.useRef(false);
+  const shakeActiveRef = useRef(false);
 
   useEffect(() => { localStorage.setItem("coc-fav", JSON.stringify([...favorites])); }, [favorites]);
   useEffect(() => { localStorage.setItem("coc-gross", JSON.stringify([...gross])); }, [gross]);
