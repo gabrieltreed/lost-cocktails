@@ -1602,27 +1602,40 @@ function CocktailApp() {
         lastShake = now;
         const pool = barCart.size > 0 && makeableCocktails.length > 0 ? makeableCocktails : allCocktails;
         const pick = pool[Math.floor(Math.random() * pool.length)];
+        // Haptic buzz on shake
+        if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
         setShakeResult(pick);
       }
     };
 
+    const setupMotion = () => {
+      window.addEventListener("devicemotion", handleMotion);
+      setShakePermission("granted");
+      localStorage.setItem("coc-shake-perm", "granted");
+    };
+
     const requestPermission = async () => {
+      // Check if already granted in a previous session
+      const saved = localStorage.getItem("coc-shake-perm");
+      if (saved === "granted") {
+        setupMotion();
+        return;
+      }
       if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
         try {
           const perm = await DeviceMotionEvent.requestPermission();
           if (perm === "granted") {
-            window.addEventListener("devicemotion", handleMotion);
-            setShakePermission("granted");
+            setupMotion();
           } else {
             setShakePermission("denied");
+            localStorage.setItem("coc-shake-perm", "denied");
           }
         } catch {
           setShakePermission("denied");
         }
       } else {
-        // Non-iOS or already permitted
-        window.addEventListener("devicemotion", handleMotion);
-        setShakePermission("granted");
+        // Non-iOS — no permission needed
+        setupMotion();
       }
     };
 
@@ -2316,6 +2329,7 @@ function CocktailApp() {
                     <button
                       onClick={() => {
                         const pick = makeableCocktails[Math.floor(Math.random() * makeableCocktails.length)];
+                        if (navigator.vibrate) navigator.vibrate([60, 30, 60]);
                         setShakeResult(pick);
                       }}
                       style={{
@@ -2386,12 +2400,15 @@ function CocktailApp() {
       {shakeResult && (
         <div
           onClick={() => setShakeResult(null)}
+          onTouchEnd={e => { e.preventDefault(); setShakeResult(null); }}
           style={{
-            position: "fixed", inset: 0, zIndex: 999,
+            position: "fixed", inset: 0, zIndex: 9999,
             background: "rgba(8,6,15,0.95)",
             display: "flex", flexDirection: "column",
             alignItems: "center", justifyContent: "center",
             padding: 32,
+            touchAction: "none",
+            WebkitTapHighlightColor: "transparent",
           }}>
           <div style={{ fontSize: "2.5rem", marginBottom: 20, opacity: 0.6 }}>🎲</div>
 
@@ -2429,6 +2446,14 @@ function CocktailApp() {
             <div style={{ height: 1, width: 40, background: "rgba(201,168,76,0.2)" }} />
             <div
               onClick={e => {
+                e.stopPropagation();
+                setShakeResult(null);
+                setSpecialTab(null);
+                setActiveDec(shakeResult.decade);
+                setActiveCard(shakeResult);
+              }}
+              onTouchEnd={e => {
+                e.preventDefault();
                 e.stopPropagation();
                 setShakeResult(null);
                 setSpecialTab(null);
