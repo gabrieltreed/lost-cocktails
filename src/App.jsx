@@ -1468,6 +1468,7 @@ function CocktailApp() {
   const [ingredientFilter, setIngredientFilter] = useState(null);
   const [copied, setCopied] = useState(false);
   const [shakeResult, setShakeResult] = useState(null);
+  const [shakeExpanded, setShakeExpanded] = useState(false);
   const [shakePermission, setShakePermission] = useState("unknown");
 
   useEffect(() => { localStorage.setItem("coc-fav", JSON.stringify([...favorites])); }, [favorites]);
@@ -1602,8 +1603,9 @@ function CocktailApp() {
         lastShake = now;
         const pool = barCart.size > 0 && makeableCocktails.length > 0 ? makeableCocktails : allCocktails;
         const pick = pool[Math.floor(Math.random() * pool.length)];
-        // Haptic buzz on shake
-        if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
+        // Haptic buzz — works on Android; iOS requires direct user gesture so best effort
+        try { if (navigator.vibrate) navigator.vibrate([80, 40, 80]); } catch(e) {}
+        setShakeExpanded(false);
         setShakeResult(pick);
       }
     };
@@ -2329,9 +2331,11 @@ function CocktailApp() {
                     <button
                       onClick={() => {
                         const pick = makeableCocktails[Math.floor(Math.random() * makeableCocktails.length)];
-                        if (navigator.vibrate) navigator.vibrate([60, 30, 60]);
+                        try { if (navigator.vibrate) navigator.vibrate([60, 30, 60]); } catch(e) {}
+                        setShakeExpanded(false);
                         setShakeResult(pick);
                       }}
+                      title="Random cocktail"
                       style={{
                         fontFamily: "'Cinzel', serif",
                         fontSize: "1.2rem",
@@ -2343,8 +2347,7 @@ function CocktailApp() {
                         cursor: "pointer",
                         display: "flex", alignItems: "center", justifyContent: "center",
                         transition: "all 0.15s",
-                      }}
-                      title="Random cocktail">
+                      }}>
                       🎲
                     </button>
                   )}
@@ -2397,92 +2400,172 @@ function CocktailApp() {
       {copied && <div className="copied-toast">📋 Copied to clipboard!</div>}
 
       {/* Shake result overlay */}
-      {shakeResult && (
-        <div
-          onClick={() => setShakeResult(null)}
-          onTouchEnd={e => { e.preventDefault(); setShakeResult(null); }}
-          style={{
-            position: "fixed", inset: 0, zIndex: 9999,
-            background: "rgba(8,6,15,0.95)",
-            display: "flex", flexDirection: "column",
-            alignItems: "center", justifyContent: "center",
-            padding: 32,
-            touchAction: "none",
-            WebkitTapHighlightColor: "transparent",
-          }}>
-          <div style={{ fontSize: "2.5rem", marginBottom: 20, opacity: 0.6 }}>🎲</div>
-
-          <div style={{
-            fontFamily: "'Raleway', sans-serif", fontSize: "0.58rem", fontWeight: 700,
-            letterSpacing: "0.35em", textTransform: "uppercase",
-            color: "rgba(201,168,76,0.4)", marginBottom: 16,
-          }}>Tonight, make a</div>
-
+      {shakeResult && (() => {
+        const c = shakeResult;
+        const cardDec = decades.find(d => d.id === c.decade) || decades[0];
+        return (
           <div
-            onClick={e => {
-              e.stopPropagation();
-              setShakeResult(null);
-              setSpecialTab(null);
-              setActiveDec(shakeResult.decade);
-              setActiveCard(shakeResult);
-            }}
+            onClick={() => { setShakeResult(null); setShakeExpanded(false); }}
             style={{
-              fontFamily: "'Cinzel Decorative', serif",
-              fontSize: "1.7rem", fontWeight: 700,
-              color: "#C9A84C", textAlign: "center", lineHeight: 1.25,
-              textShadow: "0 0 40px rgba(201,168,76,0.4)",
-              marginBottom: 40,
-              cursor: "pointer",
+              position: "fixed", inset: 0, zIndex: 9999,
+              background: "rgba(8,6,15,0.97)",
+              display: "flex", flexDirection: "column",
+              overflowY: shakeExpanded ? "auto" : "hidden",
             }}>
-            {shakeResult.name}
-          </div>
 
-          <div style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 10,
-          }}>
-            <div style={{ height: 1, width: 40, background: "rgba(201,168,76,0.2)" }} />
-            <div
-              onClick={e => {
-                e.stopPropagation();
-                setShakeResult(null);
-                setSpecialTab(null);
-                setActiveDec(shakeResult.decade);
-                setActiveCard(shakeResult);
-              }}
-              onTouchEnd={e => {
-                e.preventDefault();
-                e.stopPropagation();
-                setShakeResult(null);
-                setSpecialTab(null);
-                setActiveDec(shakeResult.decade);
-                setActiveCard(shakeResult);
-              }}
-              style={{
-                fontFamily: "'IM Fell English', serif",
-                fontStyle: "italic",
-                fontSize: "0.78rem",
-                color: "rgba(201,168,76,0.5)",
-                letterSpacing: "0.05em",
-                cursor: "pointer",
+            {!shakeExpanded ? (
+              /* ── Name screen ── */
+              <div style={{
+                flex: 1, display: "flex", flexDirection: "column",
+                alignItems: "center", justifyContent: "center", padding: 32,
               }}>
-              Tap here to consult the recipe
-            </div>
-            <div style={{
-              fontFamily: "'Raleway', sans-serif",
-              fontSize: "0.55rem",
-              color: "rgba(201,168,76,0.2)",
-              letterSpacing: "0.15em",
-              textTransform: "uppercase",
-              marginTop: 16,
-            }}>
-              or tap anywhere to dismiss
-            </div>
+                <div style={{ fontSize: "2.5rem", marginBottom: 20, opacity: 0.6 }}>🎲</div>
+                <div style={{
+                  fontFamily: "'Raleway', sans-serif", fontSize: "0.58rem", fontWeight: 700,
+                  letterSpacing: "0.35em", textTransform: "uppercase",
+                  color: "rgba(201,168,76,0.4)", marginBottom: 16,
+                }}>{(() => {
+                  const h = new Date().getHours();
+                  if (h < 12) return "This morning, make a";
+                  if (h < 17) return "This afternoon, make a";
+                  if (h < 20) return "This evening, make a";
+                  return "Tonight, make a";
+                })()}</div>
+
+                <div
+                  onClick={e => { e.stopPropagation(); setShakeExpanded(true); }}
+                  style={{
+                    fontFamily: "'Cinzel Decorative', serif",
+                    fontSize: "1.7rem", fontWeight: 700,
+                    color: "#C9A84C", textAlign: "center", lineHeight: 1.25,
+                    textShadow: "0 0 40px rgba(201,168,76,0.4)",
+                    marginBottom: 40,
+                    cursor: "pointer",
+                    padding: "8px 0",
+                  }}>
+                  {c.name}
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+                  <div style={{ height: 1, width: 40, background: "rgba(201,168,76,0.2)" }} />
+                  <div
+                    onClick={e => { e.stopPropagation(); setShakeExpanded(true); }}
+                    style={{
+                      fontFamily: "'IM Fell English', serif",
+                      fontStyle: "italic", fontSize: "0.82rem",
+                      color: "rgba(201,168,76,0.55)",
+                      letterSpacing: "0.05em", cursor: "pointer",
+                      padding: "8px 16px",
+                    }}>
+                    Tap here to consult the recipe
+                  </div>
+                  <div style={{
+                    fontFamily: "'Raleway', sans-serif", fontSize: "0.55rem",
+                    color: "rgba(201,168,76,0.2)", letterSpacing: "0.15em",
+                    textTransform: "uppercase", marginTop: 8,
+                  }}>
+                    or tap anywhere to dismiss
+                  </div>
+                </div>
+              </div>
+
+            ) : (
+              /* ── Full card screen ── */
+              <div onClick={e => e.stopPropagation()} style={{ padding: "0 0 40px" }}>
+                {/* Header */}
+                <div style={{
+                  background: "rgba(8,6,15,0.98)",
+                  padding: "20px 16px 14px",
+                  borderBottom: `1px solid ${cardDec.accent}33`,
+                  position: "sticky", top: 0,
+                  zIndex: 1,
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                }}>
+                  <div>
+                    <div style={{ fontFamily: "'Raleway', sans-serif", fontSize: "0.58rem", fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase", color: cardDec.accent, opacity: 0.6, marginBottom: 4 }}>
+                      {c.decade}
+                    </div>
+                    <div style={{ fontFamily: "'Cinzel', serif", fontSize: "1.15rem", fontWeight: 600, color: "#e8d5a3" }}>
+                      {c.name}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { setShakeResult(null); setShakeExpanded(false); }}
+                    style={{
+                      background: "transparent", border: `1px solid ${cardDec.accent}44`,
+                      color: cardDec.accent, borderRadius: "50%",
+                      width: 32, height: 32, cursor: "pointer",
+                      fontFamily: "'Raleway', sans-serif", fontSize: "0.8rem",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>✕</button>
+                </div>
+
+                <div style={{ padding: "16px 16px 0" }}>
+                  {/* Badges */}
+                  <div style={{ marginBottom: 12 }}>
+                    {c.badges && c.badges.map(b => {
+                      const badgeColors = { classic: { bg: "rgba(201,168,76,0.15)", color: "#C9A84C", label: "⭐ Classic" }, forgotten: { bg: "rgba(120,80,40,0.2)", color: "#c8a06a", label: "💀 Forgotten" }, "party-staple": { bg: "rgba(40,120,80,0.2)", color: "#6ac8a0", label: "🎉 Party Staple" }, bootlegger: { bg: "rgba(80,40,120,0.2)", color: "#a06ac8", label: "🚫 Bootlegger" }, tiki: { bg: "rgba(40,80,120,0.2)", color: "#6aa0c8", label: "🌴 Tiki" }, shot: { bg: "rgba(120,40,40,0.2)", color: "#c86a6a", label: "🥃 Shot" } };
+                      const bc = badgeColors[b] || { bg: "rgba(201,168,76,0.1)", color: "#C9A84C", label: b };
+                      return <span key={b} className="badge" style={{ background: bc.bg, color: bc.color, border: `1px solid ${bc.color}44` }}>{bc.label}</span>;
+                    })}
+                  </div>
+
+                  {/* Glass / Garnish / Method */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16, padding: "12px 14px", background: "rgba(201,168,76,0.05)", borderRadius: 6, border: `1px solid ${cardDec.accent}22` }}>
+                    {[["🥃 Glass", c.glass], ["🌿 Garnish", c.garnish], ["🔀 Method", c.method]].map(([label, val]) => (
+                      <div key={label}>
+                        <div className="detail-section-label" style={{ color: cardDec.accent }}>{label}</div>
+                        <div style={{ fontFamily: "'Raleway', sans-serif", fontSize: "0.78rem", color: "#e8d5a3", lineHeight: 1.4 }}>{val}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Famous Quote */}
+                  {c.famousQuote && (
+                    <div style={{ marginBottom: 16, padding: "12px 16px", borderLeft: `3px solid ${cardDec.accent}`, background: "rgba(201,168,76,0.04)", borderRadius: "0 6px 6px 0" }}>
+                      <div style={{ fontFamily: "'IM Fell English', serif", fontSize: "0.88rem", fontStyle: "italic", color: "#e8d5a3", lineHeight: 1.65, opacity: 0.9 }}>{c.famousQuote}</div>
+                    </div>
+                  )}
+
+                  {/* Description */}
+                  <p style={{ fontFamily: "'Raleway', sans-serif", fontSize: "0.86rem", lineHeight: 1.7, color: "#c8b483", marginBottom: 16 }}>{c.description}</p>
+
+                  {/* Notable + Region + History */}
+                  <div style={{ marginBottom: 16, padding: "12px 14px", background: "rgba(201,168,76,0.04)", borderRadius: 6, border: `1px solid ${cardDec.accent}22` }}>
+                    {c.region && <div style={{ marginBottom: 8 }}><div className="detail-section-label" style={{ color: cardDec.accent }}>📍 Origin</div><div style={{ fontFamily: "'Raleway', sans-serif", fontSize: "0.82rem", color: "#c8b483" }}>{c.region}</div></div>}
+                    {c.notable && <div style={{ marginBottom: 8 }}><div className="detail-section-label" style={{ color: cardDec.accent }}>⭐ Notable</div><div style={{ fontFamily: "'Raleway', sans-serif", fontSize: "0.82rem", color: "#c8b483", fontStyle: "italic" }}>{c.notable}</div></div>}
+                    {c.history && <div><div className="detail-section-label" style={{ color: cardDec.accent }}>📖 History</div><div style={{ fontFamily: "'Raleway', sans-serif", fontSize: "0.82rem", color: "#c8b483", lineHeight: 1.65 }}>{c.history}</div></div>}
+                  </div>
+
+                  {/* Recipe */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
+                    <div>
+                      <div className="detail-section-label" style={{ color: cardDec.accent, marginBottom: 8 }}>Ingredients</div>
+                      <ul style={{ listStyle: "none", padding: 0 }}>
+                        {c.ingredients.map((ing, j) => (
+                          <li key={j} style={{ fontFamily: "'Raleway', sans-serif", fontSize: "0.82rem", color: "#e8d5a3", lineHeight: 1.8, paddingLeft: 14, position: "relative" }}>
+                            <span style={{ position: "absolute", left: 0, color: cardDec.accent, opacity: 0.7 }}>·</span>{ing}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <div className="detail-section-label" style={{ color: cardDec.accent, marginBottom: 8 }}>Method</div>
+                      <ol style={{ listStyle: "none", padding: 0, counterReset: "step" }}>
+                        {c.instructions.map((step, j) => (
+                          <li key={j} style={{ fontFamily: "'Raleway', sans-serif", fontSize: "0.82rem", color: "#e8d5a3", lineHeight: 1.8, paddingLeft: 20, position: "relative", marginBottom: 4, counterIncrement: "step" }}>
+                            <span style={{ position: "absolute", left: 0, color: cardDec.accent, opacity: 0.7, fontWeight: 700, fontSize: "0.72rem" }}>{j + 1}.</span>{step}
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
