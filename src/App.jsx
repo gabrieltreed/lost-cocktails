@@ -1464,12 +1464,16 @@ function CocktailApp() {
   const [favorites, setFavorites] = useState(() => new Set(JSON.parse(localStorage.getItem("coc-fav") || "[]")));
   const [gross, setGross] = useState(() => new Set(JSON.parse(localStorage.getItem("coc-gross") || "[]")));
   const [made, setMade] = useState(() => new Set(JSON.parse(localStorage.getItem("coc-made") || "[]")));
+  const [barCart, setBarCart] = useState(() => new Set(JSON.parse(localStorage.getItem("coc-barcart") || "[]")));
   const [ingredientFilter, setIngredientFilter] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [shakeResult, setShakeResult] = useState(null);
+  const [shakePermission, setShakePermission] = useState("unknown");
 
   useEffect(() => { localStorage.setItem("coc-fav", JSON.stringify([...favorites])); }, [favorites]);
   useEffect(() => { localStorage.setItem("coc-gross", JSON.stringify([...gross])); }, [gross]);
   useEffect(() => { localStorage.setItem("coc-made", JSON.stringify([...made])); }, [made]);
+  useEffect(() => { localStorage.setItem("coc-barcart", JSON.stringify([...barCart])); }, [barCart]);
 
   const toggle = (set, setFn, key, name) => (n) => {
     setFn(prev => {
@@ -1494,6 +1498,137 @@ function CocktailApp() {
   };
 
   const allCocktails = Object.entries(cocktails).flatMap(([decade, list]) => list.map(c => ({ ...c, decade })));
+
+  // ── BAR CART INGREDIENT MAP ──────────────────────────────────────────────
+  const BAR_INGREDIENTS = {
+    "Spirits": [
+      { id: "rye", label: "Rye Whiskey", keywords: ["rye whiskey", " rye "] },
+      { id: "bourbon", label: "Bourbon", keywords: ["bourbon"] },
+      { id: "scotch", label: "Scotch", keywords: ["scotch", "single malt"] },
+      { id: "irish", label: "Irish Whiskey", keywords: ["irish whiskey"] },
+      { id: "gin", label: "Gin", keywords: ["gin"] },
+      { id: "rum", label: "Rum (White/Light)", keywords: ["white rum", "light rum", "silver rum", "1.5 oz rum", "2 oz rum", "1 oz rum"] },
+      { id: "rum-dark", label: "Rum (Dark/Aged)", keywords: ["dark rum", "aged rum", "jamaican rum", "demerara rum"] },
+      { id: "vodka", label: "Vodka", keywords: ["vodka"] },
+      { id: "cognac", label: "Cognac", keywords: ["cognac"] },
+      { id: "brandy", label: "Brandy/Applejack", keywords: ["brandy", "applejack", "calvados", "armagnac"] },
+      { id: "tequila", label: "Tequila", keywords: ["tequila"] },
+      { id: "mezcal", label: "Mezcal", keywords: ["mezcal"] },
+      { id: "absinthe", label: "Absinthe", keywords: ["absinthe", "pastis"] },
+    ],
+    "Vermouth & Fortified": [
+      { id: "sweet-vermouth", label: "Sweet Vermouth", keywords: ["sweet vermouth"] },
+      { id: "dry-vermouth", label: "Dry Vermouth", keywords: ["dry vermouth"] },
+      { id: "campari", label: "Campari", keywords: ["campari"] },
+      { id: "lillet", label: "Lillet/Dubonnet", keywords: ["lillet", "dubonnet"] },
+    ],
+    "Liqueurs": [
+      { id: "cointreau", label: "Cointreau/Triple Sec", keywords: ["cointreau", "triple sec", "curaçao", "curacao"] },
+      { id: "maraschino", label: "Maraschino", keywords: ["maraschino"] },
+      { id: "chartreuse", label: "Chartreuse", keywords: ["chartreuse"] },
+      { id: "benedictine", label: "Bénédictine", keywords: ["bénédictine", "benedictine"] },
+      { id: "amaretto", label: "Amaretto", keywords: ["amaretto"] },
+      { id: "kahlua", label: "Kahlúa/Coffee Liqueur", keywords: ["kahlúa", "kahlua", "coffee liqueur"] },
+      { id: "baileys", label: "Baileys", keywords: ["baileys"] },
+      { id: "drambuie", label: "Drambuie", keywords: ["drambuie"] },
+      { id: "galliano", label: "Galliano", keywords: ["galliano"] },
+      { id: "midori", label: "Midori", keywords: ["midori"] },
+      { id: "falernum", label: "Falernum", keywords: ["falernum"] },
+    ],
+    "Bitters": [
+      { id: "angostura", label: "Angostura Bitters", keywords: ["angostura bitters"] },
+      { id: "peychauds", label: "Peychaud's Bitters", keywords: ["peychaud"] },
+      { id: "orange-bitters", label: "Orange Bitters", keywords: ["orange bitters"] },
+    ],
+    "Mixers & Fresh": [
+      { id: "simple-syrup", label: "Simple Syrup", keywords: ["simple syrup"] },
+      { id: "grenadine", label: "Grenadine", keywords: ["grenadine"] },
+      { id: "orgeat", label: "Orgeat", keywords: ["orgeat"] },
+      { id: "lemon", label: "Fresh Lemon Juice", keywords: ["lemon juice"] },
+      { id: "lime", label: "Fresh Lime Juice", keywords: ["lime juice"] },
+      { id: "oj", label: "Orange Juice", keywords: ["orange juice"] },
+      { id: "grapefruit", label: "Grapefruit Juice", keywords: ["grapefruit juice"] },
+      { id: "pineapple", label: "Pineapple Juice", keywords: ["pineapple juice"] },
+      { id: "coconut", label: "Coconut Cream", keywords: ["coconut cream", "coconut milk"] },
+      { id: "heavy-cream", label: "Heavy Cream", keywords: ["heavy cream"] },
+      { id: "egg-white", label: "Egg Whites", keywords: ["egg white"] },
+      { id: "whole-egg", label: "Whole Eggs", keywords: ["whole egg"] },
+      { id: "club-soda", label: "Club Soda", keywords: ["club soda", "soda water"] },
+      { id: "ginger-beer", label: "Ginger Beer", keywords: ["ginger beer"] },
+      { id: "champagne", label: "Champagne/Prosecco", keywords: ["champagne", "prosecco", "sparkling wine"] },
+      { id: "coffee", label: "Coffee/Espresso", keywords: ["coffee", "espresso"] },
+    ],
+  };
+
+  const allBarIngredients = Object.values(BAR_INGREDIENTS).flat();
+
+  // Check if a cocktail is makeable given bar cart
+  const getCocktailStatus = (cocktail) => {
+    if (barCart.size === 0) return { status: "unknown", missing: [] };
+    if (!cocktail.ingredients) return { status: "unknown", missing: [] };
+    const missing = [];
+    for (const ingStr of cocktail.ingredients) {
+      const lower = ingStr.toLowerCase();
+      if (lower.includes("garnish") || lower.includes("optional") || lower.includes("to taste") ||
+          lower.includes("ice") || lower.includes("water") || lower.includes("sugar") ||
+          lower.includes("salt") || lower.includes("nutmeg") || lower.includes("mint") ||
+          lower.includes("twist") || lower.includes("wedge") || lower.includes("slice") ||
+          lower.includes("cherry") || lower.includes("olive") || lower.includes("peel")) continue;
+      const covered = allBarIngredients.some(ing =>
+        barCart.has(ing.id) && ing.keywords.some(kw => lower.includes(kw))
+      );
+      if (!covered) missing.push(ingStr);
+    }
+    if (missing.length === 0) return { status: "makeable", missing: [] };
+    if (missing.length === 1) return { status: "almost", missing };
+    return { status: "missing", missing };
+  };
+
+  const makeableCocktails = allCocktails.filter(c => getCocktailStatus(c).status === "makeable");
+  const almostCocktails = allCocktails.filter(c => getCocktailStatus(c).status === "almost");
+
+  // Shake detection
+  useEffect(() => {
+    let lastShake = 0;
+    let lastAcc = { x: 0, y: 0, z: 0 };
+
+    const handleMotion = (e) => {
+      const acc = e.accelerationIncludingGravity;
+      if (!acc) return;
+      const delta = Math.abs(acc.x - lastAcc.x) + Math.abs(acc.y - lastAcc.y) + Math.abs(acc.z - lastAcc.z);
+      lastAcc = { x: acc.x || 0, y: acc.y || 0, z: acc.z || 0 };
+      const now = Date.now();
+      if (delta > 30 && now - lastShake > 1500) {
+        lastShake = now;
+        const pool = barCart.size > 0 && makeableCocktails.length > 0 ? makeableCocktails : allCocktails;
+        const pick = pool[Math.floor(Math.random() * pool.length)];
+        setShakeResult(pick);
+      }
+    };
+
+    const requestPermission = async () => {
+      if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+        try {
+          const perm = await DeviceMotionEvent.requestPermission();
+          if (perm === "granted") {
+            window.addEventListener("devicemotion", handleMotion);
+            setShakePermission("granted");
+          } else {
+            setShakePermission("denied");
+          }
+        } catch {
+          setShakePermission("denied");
+        }
+      } else {
+        // Non-iOS or already permitted
+        window.addEventListener("devicemotion", handleMotion);
+        setShakePermission("granted");
+      }
+    };
+
+    requestPermission();
+    return () => window.removeEventListener("devicemotion", handleMotion);
+  }, [makeableCocktails, allCocktails, barCart]);
 
   const allIngredients = [...new Set(
     allCocktails.flatMap(c => c.ingredients.map(i => {
@@ -1533,6 +1668,7 @@ function CocktailApp() {
     else if (specialTab === "favorites") list = allCocktails.filter(c => favorites.has(c.name));
     else if (specialTab === "gross") list = allCocktails.filter(c => gross.has(c.name));
     else if (specialTab === "made") list = allCocktails.filter(c => made.has(c.name));
+    else if (specialTab === "barcart") list = makeableCocktails;
     else list = cocktails[activeDec] || [];
 
     if (ingredientFilter) {
@@ -1579,9 +1715,9 @@ function CocktailApp() {
   const displayList = getDisplayList();
 
   const emptyMessages = {
-    favorites: { icon: "❤️", text: "No favorites yet", sub: "Tap the heart on any cocktail to save it here." },
-    gross:     { icon: "🤢", text: "Nothing gross yet", sub: "Tap 🤢 on any cocktail you would never drink." },
-    made:      { icon: "🍸", text: "Nothing made yet", sub: "Tap 🍸 on any cocktail you have made." },
+    favorites: { icon: "🥂", text: "Nothing toasted yet", sub: "Tap 🥂 on any cocktail to save it here." },
+    gross:     { icon: "☠️", text: "Nothing passed on yet", sub: "Tap ☠️ on any cocktail you would never drink." },
+    made:      { icon: "🥃", text: "Nothing nailed yet", sub: "Tap 🥃 on any cocktail you have made." },
   };
 
   const styles = `
@@ -1682,15 +1818,16 @@ function CocktailApp() {
 
     .special-btn {
       font-family: 'Raleway', sans-serif;
-      font-size: 0.72rem;
+      font-size: 0.65rem;
       font-weight: 600;
-      padding: 5px 14px;
+      padding: 5px 10px;
       border-radius: 20px;
       border: 1px solid rgba(201,168,76,0.25);
       cursor: pointer;
       transition: all 0.2s;
       background: transparent;
       color: rgba(201,168,76,0.55);
+      white-space: nowrap;
     }
 
     .special-btn.active {
@@ -1859,7 +1996,7 @@ function CocktailApp() {
     }
   `;
 
-  const renderCard = (c, i) => {
+  const renderCard = (c, i, missingIng = null) => {
     const isOpen = activeCard?.name === c.name;
     const isFav = favorites.has(c.name);
     const isGros = gross.has(c.name);
@@ -1908,14 +2045,25 @@ function CocktailApp() {
               {!isOpen && (
                 <div className="card-preview">{c.glass} · {c.method}</div>
               )}
+              {!isOpen && missingIng && (
+                <div style={{
+                  fontFamily: "'Raleway', sans-serif",
+                  fontSize: "0.62rem",
+                  color: "rgba(201,168,76,0.5)",
+                  marginTop: 5,
+                  letterSpacing: "0.04em",
+                }}>
+                  ✦ Need: <span style={{ color: "rgba(201,168,76,0.8)" }}>{missingIng}</span>
+                </div>
+              )}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 2, marginLeft: 8, flexShrink: 0 }}>
               <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleFav(c.name); }}
-                style={{ opacity: isFav ? 1 : 0.25, filter: isFav ? "none" : "grayscale(1)" }}>❤️</button>
+                style={{ opacity: isFav ? 1 : 0.25, filter: isFav ? "none" : "grayscale(1)" }}>🥂</button>
               <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleGross(c.name); }}
-                style={{ opacity: isGros ? 1 : 0.25, filter: isGros ? "none" : "grayscale(1)" }}>🤢</button>
+                style={{ opacity: isGros ? 1 : 0.25, filter: isGros ? "none" : "grayscale(1)" }}>☠️</button>
               <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleMade(c.name); }}
-                style={{ opacity: isMade ? 1 : 0.25, filter: isMade ? "none" : "grayscale(1)" }}>🍸</button>
+                style={{ opacity: isMade ? 1 : 0.25, filter: isMade ? "none" : "grayscale(1)" }}>🥃</button>
               <span style={{ color: "#C9A84C", opacity: 0.5, fontSize: "0.9rem", marginLeft: 4, display: "inline-block", transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.25s" }}>▾</span>
             </div>
           </div>
@@ -2034,13 +2182,14 @@ function CocktailApp() {
         {/* Special tabs */}
         <div className="special-row">
           {[
-            ["favorites", "❤️ Favorites", favorites.size],
-            ["gross",     "🤢 Gross",     gross.size],
-            ["made",      "🍸 Made This", made.size],
+            ["favorites", "🥂 A Toast", favorites.size],
+            ["gross",     "☠️ Pass",      gross.size],
+            ["made",      "🥃 Nailed It", made.size],
+            ["barcart",   "🍹 Bar Cart",  barCart.size],
           ].map(([key, label, count]) => (
             <button key={key} className={`special-btn ${specialTab === key ? "active" : ""}`}
               onClick={() => { setSpecialTab(specialTab === key ? null : key); setActiveCard(null); }}>
-              {label}{count > 0 ? ` (${count})` : ""}
+              {label}{count > 0 && key === "barcart" ? ` (${makeableCocktails.length} makeable)` : count > 0 ? ` (${count})` : ""}
             </button>
           ))}
         </div>
@@ -2074,23 +2223,156 @@ function CocktailApp() {
         </div>
 
         {/* Count */}
-        <div style={{ fontFamily: "'Raleway', sans-serif", fontSize: "0.65rem", letterSpacing: "0.15em", textTransform: "uppercase", color: "rgba(201,168,76,0.4)", marginBottom: 12 }}>
-          {displayList.length} cocktail{displayList.length !== 1 ? "s" : ""}
-          {ingredientFilter ? ` · ${ingredientFilter}` : ""}
-          {search ? ` · "${search}"` : ""}
-        </div>
+        {specialTab !== "barcart" && (
+          <div style={{ fontFamily: "'Raleway', sans-serif", fontSize: "0.65rem", letterSpacing: "0.15em", textTransform: "uppercase", color: "rgba(201,168,76,0.4)", marginBottom: 12 }}>
+            {displayList.length} cocktail{displayList.length !== 1 ? "s" : ""}
+            {ingredientFilter ? ` · ${ingredientFilter}` : ""}
+            {search ? ` · "${search}"` : ""}
+          </div>
+        )}
 
         {/* Empty state */}
-        {specialTab && specialTab !== "all" && displayList.length === 0 && !search && !ingredientFilter && (
+        {specialTab && specialTab !== "all" && specialTab !== "barcart" && displayList.length === 0 && !search && !ingredientFilter && (
           <div style={{ textAlign: "center", padding: "60px 20px", color: "rgba(201,168,76,0.35)" }}>
-            <div style={{ fontSize: "2.5rem", marginBottom: 12 }}>{emptyMessages[specialTab].icon}</div>
-            <div style={{ fontFamily: "'Cinzel', serif", fontSize: "1.1rem", marginBottom: 8, color: "rgba(201,168,76,0.5)" }}>{emptyMessages[specialTab].text}</div>
-            <div style={{ fontFamily: "'Raleway', sans-serif", fontSize: "0.82rem" }}>{emptyMessages[specialTab].sub}</div>
+            <div style={{ fontSize: "2.5rem", marginBottom: 12 }}>{emptyMessages[specialTab]?.icon}</div>
+            <div style={{ fontFamily: "'Cinzel', serif", fontSize: "1.1rem", marginBottom: 8, color: "rgba(201,168,76,0.5)" }}>{emptyMessages[specialTab]?.text}</div>
+            <div style={{ fontFamily: "'Raleway', sans-serif", fontSize: "0.82rem" }}>{emptyMessages[specialTab]?.sub}</div>
+          </div>
+        )}
+
+        {/* ── BAR CART UI ── */}
+        {specialTab === "barcart" && (
+          <div>
+            {/* Header row */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <div style={{ fontFamily: "'Cinzel', serif", fontSize: "0.85rem", color: "#C9A84C", letterSpacing: "0.1em" }}>
+                🍹 Your Bar Cart
+              </div>
+              {barCart.size > 0 && (
+                <button onClick={() => setBarCart(new Set())} style={{
+                  fontFamily: "'Raleway', sans-serif", fontSize: "0.6rem", fontWeight: 600,
+                  letterSpacing: "0.1em", textTransform: "uppercase",
+                  background: "transparent", border: "1px solid rgba(201,168,76,0.2)",
+                  color: "rgba(201,168,76,0.4)", padding: "4px 10px", cursor: "pointer", borderRadius: 12,
+                }}>Clear All</button>
+              )}
+            </div>
+
+            {/* Ingredient categories */}
+            {Object.entries(BAR_INGREDIENTS).map(([category, ings]) => (
+              <div key={category} style={{ marginBottom: 18 }}>
+                <div style={{
+                  fontFamily: "'Raleway', sans-serif", fontSize: "0.58rem", fontWeight: 700,
+                  letterSpacing: "0.2em", textTransform: "uppercase",
+                  color: "rgba(201,168,76,0.4)", marginBottom: 8,
+                }}>{category}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {ings.map(ing => {
+                    const active = barCart.has(ing.id);
+                    return (
+                      <button key={ing.id}
+                        onClick={() => {
+                          setBarCart(prev => {
+                            const next = new Set(prev);
+                            if (next.has(ing.id)) next.delete(ing.id);
+                            else next.add(ing.id);
+                            return next;
+                          });
+                        }}
+                        style={{
+                          fontFamily: "'Raleway', sans-serif",
+                          fontSize: "0.68rem", fontWeight: active ? 700 : 500,
+                          padding: "5px 12px", borderRadius: 14,
+                          border: `1px solid ${active ? "#C9A84C" : "rgba(201,168,76,0.2)"}`,
+                          background: active ? "rgba(201,168,76,0.18)" : "transparent",
+                          color: active ? "#C9A84C" : "rgba(201,168,76,0.45)",
+                          cursor: "pointer", transition: "all 0.15s",
+                        }}>
+                        {active ? "✓ " : ""}{ing.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {/* Divider */}
+            <div style={{ height: 1, background: "rgba(201,168,76,0.15)", margin: "20px 0" }} />
+
+            {/* Makeable cocktails */}
+            {barCart.size === 0 ? (
+              <div style={{ textAlign: "center", padding: "30px 20px", color: "rgba(201,168,76,0.3)" }}>
+                <div style={{ fontSize: "2rem", marginBottom: 8 }}>🍹</div>
+                <div style={{ fontFamily: "'Cinzel', serif", fontSize: "0.9rem" }}>Tap ingredients above to see what you can make</div>
+              </div>
+            ) : (
+              <div>
+                {/* Dice button */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                  <div style={{ fontFamily: "'Cinzel', serif", fontSize: "0.85rem", color: "#C9A84C" }}>
+                    {makeableCocktails.length > 0 ? `${makeableCocktails.length} Cocktails You Can Make` : "No exact matches yet"}
+                  </div>
+                  {makeableCocktails.length > 0 && (
+                    <button
+                      onClick={() => {
+                        const pick = makeableCocktails[Math.floor(Math.random() * makeableCocktails.length)];
+                        setShakeResult(pick);
+                      }}
+                      style={{
+                        fontFamily: "'Cinzel', serif",
+                        fontSize: "1.2rem",
+                        background: "rgba(201,168,76,0.1)",
+                        border: "1px solid rgba(201,168,76,0.4)",
+                        color: "#C9A84C",
+                        borderRadius: "50%",
+                        width: 42, height: 42,
+                        cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        transition: "all 0.15s",
+                      }}
+                      title="Random cocktail">
+                      🎲
+                    </button>
+                  )}
+                </div>
+
+                {/* Shake hint */}
+                {shakePermission === "granted" && makeableCocktails.length > 0 && (
+                  <div style={{
+                    fontFamily: "'Raleway', sans-serif", fontSize: "0.62rem",
+                    color: "rgba(201,168,76,0.3)", letterSpacing: "0.1em",
+                    textAlign: "center", marginBottom: 12, fontStyle: "italic",
+                  }}>
+                    or shake your phone for a random pick 📳
+                  </div>
+                )}
+
+                {/* Makeable list */}
+                {makeableCocktails.map((c, i) => renderCard(c, i))}
+
+                {/* Almost makeable */}
+                {almostCocktails.length > 0 && (
+                  <div>
+                    <div style={{ height: 1, background: "rgba(201,168,76,0.1)", margin: "16px 0 12px" }} />
+                    <div style={{
+                      fontFamily: "'Cinzel', serif", fontSize: "0.75rem",
+                      color: "rgba(201,168,76,0.4)", marginBottom: 10, letterSpacing: "0.08em",
+                    }}>
+                      {almostCocktails.length} Cocktails — Missing Just One Ingredient
+                    </div>
+                    {almostCocktails.map((c, i) => {
+                      const { missing } = getCocktailStatus(c);
+                      return renderCard(c, i + 500, missing[0] || null);
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
         {/* Cards */}
-        {displayList.map((c, i) => renderCard(c, i))}
+        {specialTab !== "barcart" && displayList.map((c, i) => renderCard(c, i))}
       </div>
 
       {/* Footer */}
@@ -2099,6 +2381,83 @@ function CocktailApp() {
       </div>
 
       {copied && <div className="copied-toast">📋 Copied to clipboard!</div>}
+
+      {/* Shake result overlay */}
+      {shakeResult && (
+        <div
+          onClick={() => setShakeResult(null)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 999,
+            background: "rgba(8,6,15,0.95)",
+            display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center",
+            padding: 32,
+          }}>
+          <div style={{ fontSize: "2.5rem", marginBottom: 20, opacity: 0.6 }}>🎲</div>
+
+          <div style={{
+            fontFamily: "'Raleway', sans-serif", fontSize: "0.58rem", fontWeight: 700,
+            letterSpacing: "0.35em", textTransform: "uppercase",
+            color: "rgba(201,168,76,0.4)", marginBottom: 16,
+          }}>Tonight, make a</div>
+
+          <div
+            onClick={e => {
+              e.stopPropagation();
+              setShakeResult(null);
+              setSpecialTab(null);
+              setActiveDec(shakeResult.decade);
+              setActiveCard(shakeResult);
+            }}
+            style={{
+              fontFamily: "'Cinzel Decorative', serif",
+              fontSize: "1.7rem", fontWeight: 700,
+              color: "#C9A84C", textAlign: "center", lineHeight: 1.25,
+              textShadow: "0 0 40px rgba(201,168,76,0.4)",
+              marginBottom: 40,
+              cursor: "pointer",
+            }}>
+            {shakeResult.name}
+          </div>
+
+          <div style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 10,
+          }}>
+            <div style={{ height: 1, width: 40, background: "rgba(201,168,76,0.2)" }} />
+            <div
+              onClick={e => {
+                e.stopPropagation();
+                setShakeResult(null);
+                setSpecialTab(null);
+                setActiveDec(shakeResult.decade);
+                setActiveCard(shakeResult);
+              }}
+              style={{
+                fontFamily: "'IM Fell English', serif",
+                fontStyle: "italic",
+                fontSize: "0.78rem",
+                color: "rgba(201,168,76,0.5)",
+                letterSpacing: "0.05em",
+                cursor: "pointer",
+              }}>
+              Tap here to consult the recipe
+            </div>
+            <div style={{
+              fontFamily: "'Raleway', sans-serif",
+              fontSize: "0.55rem",
+              color: "rgba(201,168,76,0.2)",
+              letterSpacing: "0.15em",
+              textTransform: "uppercase",
+              marginTop: 16,
+            }}>
+              or tap anywhere to dismiss
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
