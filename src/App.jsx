@@ -1470,6 +1470,7 @@ function CocktailApp() {
   const [shakeResult, setShakeResult] = useState(null);
   const [shakeExpanded, setShakeExpanded] = useState(false);
   const [shakePermission, setShakePermission] = useState("unknown");
+  const shakeActiveRef = React.useRef(false);
 
   useEffect(() => { localStorage.setItem("coc-fav", JSON.stringify([...favorites])); }, [favorites]);
   useEffect(() => { localStorage.setItem("coc-gross", JSON.stringify([...gross])); }, [gross]);
@@ -1600,11 +1601,12 @@ function CocktailApp() {
       lastAcc = { x: acc.x || 0, y: acc.y || 0, z: acc.z || 0 };
       const now = Date.now();
       if (delta > 30 && now - lastShake > 1500) {
+        if (shakeActiveRef.current) return; // overlay already open
         lastShake = now;
         const pool = barCart.size > 0 && makeableCocktails.length > 0 ? makeableCocktails : allCocktails;
         const pick = pool[Math.floor(Math.random() * pool.length)];
-        // Haptic buzz — works on Android; iOS requires direct user gesture so best effort
         try { if (navigator.vibrate) navigator.vibrate([80, 40, 80]); } catch(e) {}
+        shakeActiveRef.current = true;
         setShakeExpanded(false);
         setShakeResult(pick);
       }
@@ -2405,7 +2407,7 @@ function CocktailApp() {
         const cardDec = decades.find(d => d.id === c.decade) || decades[0];
         return (
           <div
-            onClick={() => { setShakeResult(null); setShakeExpanded(false); }}
+            onClick={() => { shakeActiveRef.current = false; setShakeResult(null); setShakeExpanded(false); }}
             style={{
               position: "fixed", inset: 0, zIndex: 9999,
               background: "rgba(8,6,15,0.97)",
@@ -2419,7 +2421,15 @@ function CocktailApp() {
                 flex: 1, display: "flex", flexDirection: "column",
                 alignItems: "center", justifyContent: "center", padding: 32,
               }}>
-                <div style={{ fontSize: "2.5rem", marginBottom: 20, opacity: 0.6 }}>🎲</div>
+                <div
+                  onClick={e => {
+                    e.stopPropagation();
+                    const pool = barCart.size > 0 && makeableCocktails.length > 0 ? makeableCocktails : allCocktails;
+                    const pick = pool[Math.floor(Math.random() * pool.length)];
+                    setShakeExpanded(false);
+                    setShakeResult(pick);
+                  }}
+                  style={{ fontSize: "2.5rem", marginBottom: 20, opacity: 0.6, cursor: "pointer" }}>🎲</div>
                 <div style={{
                   fontFamily: "'Raleway', sans-serif", fontSize: "0.58rem", fontWeight: 700,
                   letterSpacing: "0.35em", textTransform: "uppercase",
@@ -2439,7 +2449,7 @@ function CocktailApp() {
                     fontSize: "1.7rem", fontWeight: 700,
                     color: "#C9A84C", textAlign: "center", lineHeight: 1.25,
                     textShadow: "0 0 40px rgba(201,168,76,0.4)",
-                    marginBottom: 40,
+                    marginBottom: 32,
                     cursor: "pointer",
                     padding: "8px 0",
                   }}>
@@ -2490,7 +2500,7 @@ function CocktailApp() {
                     </div>
                   </div>
                   <button
-                    onClick={() => { setShakeResult(null); setShakeExpanded(false); }}
+                    onClick={() => { shakeActiveRef.current = false; setShakeResult(null); setShakeExpanded(false); }}
                     style={{
                       background: "transparent", border: `1px solid ${cardDec.accent}44`,
                       color: cardDec.accent, borderRadius: "50%",
