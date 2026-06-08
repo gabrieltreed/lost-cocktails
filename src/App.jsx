@@ -1,5 +1,57 @@
 import { useState, useEffect, useRef } from "react";
 
+
+// Approximate US retail prices (750ml unless noted) — as of 2025
+const INGREDIENT_PRICES = {
+  "rye":           22,   // e.g. Rittenhouse Rye
+  "bourbon":       25,   // e.g. Evan Williams Bottled-in-Bond
+  "scotch":        35,   // e.g. Monkey Shoulder
+  "irish":         25,   // e.g. Jameson
+  "gin":           22,   // e.g. Beefeater
+  "rum":           18,   // e.g. Bacardi White
+  "rum-dark":      22,   // e.g. Myers's Dark Rum
+  "vodka":         20,   // e.g. Smirnoff
+  "cognac":        38,   // e.g. Courvoisier VS
+  "brandy":        18,   // e.g. Christian Brothers
+  "tequila":       22,   // e.g. Espolòn Blanco
+  "mezcal":        42,   // e.g. El Silencio
+  "absinthe":      45,   // e.g. Pernod Absinthe
+  "sweet-vermouth": 14,  // e.g. Martini Rosso
+  "dry-vermouth":  12,   // e.g. Martini Extra Dry
+  "campari":       30,   // Campari 750ml
+  "lillet":        20,   // Lillet Blanc
+  "cointreau":     38,   // Cointreau 750ml (or $14 for triple sec)
+  "maraschino":    32,   // Luxardo Maraschino
+  "chartreuse":    65,   // Green Chartreuse
+  "benedictine":   38,   // Bénédictine
+  "amaretto":      20,   // e.g. Disaronno
+  "kahlua":        25,   // Kahlúa 750ml
+  "baileys":       28,   // Baileys 750ml
+  "drambuie":      35,   // Drambuie 750ml
+  "galliano":      35,   // Galliano 750ml
+  "midori":        20,   // Midori 750ml
+  "falernum":      18,   // e.g. Fee Brothers
+  "angostura":     10,   // Angostura Bitters 4oz
+  "peychauds":     10,   // Peychaud's Bitters 5oz
+  "orange-bitters": 10,  // e.g. Regans' Orange Bitters
+  "simple-syrup":   6,   // or make it free at home
+  "grenadine":      8,   // e.g. Stirrings
+  "orgeat":        12,   // e.g. BG Reynolds
+  "lemon":          3,   // bag of lemons
+  "lime":           3,   // bag of limes
+  "oj":             4,   // quart OJ
+  "grapefruit":     4,   // quart grapefruit juice
+  "pineapple":      4,   // can pineapple juice
+  "coconut":        5,   // can coconut cream
+  "heavy-cream":    4,   // pint heavy cream
+  "egg-white":      3,   // eggs
+  "whole-egg":      3,   // eggs
+  "club-soda":      3,   // 6-pack club soda
+  "ginger-beer":    8,   // 4-pack ginger beer
+  "champagne":     18,   // e.g. Korbel Brut
+  "coffee":         5,   // espresso/cold brew
+};
+
 const decades = [
   { id: "pre-1900s", label: "Pre-1900s", color: "#2C1810", bg: "#1a0f08", accent: "#C9A84C", gem: "#8B7355" },
   { id: "1900s",    label: "1900s",    color: "#1C1400", bg: "#120e00", accent: "#D4AF37", gem: "#B8860B" },
@@ -1465,6 +1517,7 @@ function CocktailApp() {
   const [gross, setGross] = useState(() => new Set(JSON.parse(localStorage.getItem("coc-gross") || "[]")));
   const [made, setMade] = useState(() => new Set(JSON.parse(localStorage.getItem("coc-made") || "[]")));
   const [barCart, setBarCart] = useState(() => new Set(JSON.parse(localStorage.getItem("coc-barcart") || "[]")));
+  const [barCartKey, setBarCartKey] = useState(() => JSON.stringify([...new Set(JSON.parse(localStorage.getItem("coc-barcart") || "[]"))].sort()));
   const [ingredientFilter, setIngredientFilter] = useState(null);
   const [copied, setCopied] = useState(false);
   const [shakeResult, setShakeResult] = useState(null);
@@ -1478,7 +1531,10 @@ function CocktailApp() {
   useEffect(() => { localStorage.setItem("coc-fav", JSON.stringify([...favorites])); }, [favorites]);
   useEffect(() => { localStorage.setItem("coc-gross", JSON.stringify([...gross])); }, [gross]);
   useEffect(() => { localStorage.setItem("coc-made", JSON.stringify([...made])); }, [made]);
-  useEffect(() => { localStorage.setItem("coc-barcart", JSON.stringify([...barCart])); }, [barCart]);
+  useEffect(() => {
+    localStorage.setItem("coc-barcart", JSON.stringify([...barCart]));
+    setBarCartKey(JSON.stringify([...barCart].sort()));
+  }, [barCart]);
 
   const toggle = (set, setFn, key, name) => (n) => {
     setFn(prev => {
@@ -1592,6 +1648,88 @@ function CocktailApp() {
   const makeableCocktails = allCocktails.filter(c => getCocktailStatus(c).status === "makeable");
   const almostCocktails = allCocktails.filter(c => getCocktailStatus(c).status === "almost");
 
+  const [mvpBudget, setMvpBudget] = useState(50);
+
+  // Computed inline every render — no effects, no stale closures
+  const computeMVB = () => {
+    if (barCart.size === 0) return null;
+    const counts = {};
+    for (const c of allCocktails) {
+      const { status, missing } = getCocktailStatus(c);
+      if (status === "almost" && missing.length === 1) {
+        const missingStr = missing[0].toLowerCase();
+        for (const [cat, ings] of Object.entries(BAR_INGREDIENTS)) {
+          for (const ing of ings) {
+            if (!barCart.has(ing.id) && ing.keywords.some(kw => missingStr.includes(kw))) {
+              if (!counts[ing.id]) counts[ing.id] = { ing, count: 0, cocktails: [] };
+              counts[ing.id].count++;
+              counts[ing.id].cocktails.push(c.name);
+            }
+          }
+        }
+      }
+    }
+    const entries = Object.values(counts).sort((a, b) => b.count - a.count);
+    return entries.length > 0 ? entries[0] : null;
+  };
+
+  const computeMVP = (budget) => {
+    if (barCart.size === 0) return null;
+    const isSkip = (lower) =>
+      lower.includes("garnish") || lower.includes("optional") || lower.includes("to taste") ||
+      lower.includes("ice") || lower.includes("water") || lower.includes("sugar") ||
+      lower.includes("salt") || lower.includes("nutmeg") || lower.includes("mint") ||
+      lower.includes("twist") || lower.includes("wedge") || lower.includes("slice") ||
+      lower.includes("cherry") || lower.includes("olive") || lower.includes("peel");
+    const isMakeableWith = (cocktail, cart) => {
+      for (const ingStr of cocktail.ingredients) {
+        const lower = ingStr.toLowerCase();
+        if (isSkip(lower)) continue;
+        if (!allBarIngredients.some(ing => cart.has(ing.id) && ing.keywords.some(kw => lower.includes(kw)))) return false;
+      }
+      return true;
+    };
+    const alreadyMakeable = new Set(allCocktails.filter(c => isMakeableWith(c, barCart)).map(c => c.name));
+    const countNewMakeable = (cart) => allCocktails.filter(c => !alreadyMakeable.has(c.name) && isMakeableWith(c, cart)).length;
+    const ingMap = {};
+    for (const c of allCocktails) {
+      if (alreadyMakeable.has(c.name)) continue;
+      for (const ingStr of c.ingredients) {
+        const lower = ingStr.toLowerCase();
+        if (isSkip(lower)) continue;
+        if (!allBarIngredients.some(ing => barCart.has(ing.id) && ing.keywords.some(kw => lower.includes(kw)))) {
+          for (const [cat, ings] of Object.entries(BAR_INGREDIENTS)) {
+            for (const ing of ings) {
+              if (!barCart.has(ing.id) && ing.keywords.some(kw => lower.includes(kw))) {
+                if (!ingMap[ing.id]) ingMap[ing.id] = { ing, price: INGREDIENT_PRICES[ing.id] || 99 };
+              }
+            }
+          }
+        }
+      }
+    }
+    const candidates = Object.values(ingMap).filter(x => x.price <= budget).sort((a, b) => a.price - b.price).slice(0, 12);
+    if (candidates.length === 0) return null;
+    let best = { items: [], count: 0, total: 0 };
+    const tryCombo = (idx, curr, cost, cart) => {
+      const n = countNewMakeable(cart);
+      if (n > best.count || (n === best.count && cost < best.total)) best = { items: [...curr], count: n, total: cost };
+      if (curr.length >= 3 || idx >= candidates.length) return;
+      for (let i = idx; i < candidates.length; i++) {
+        const cand = candidates[i];
+        if (cost + cand.price <= budget) {
+          const nc = new Set(cart); nc.add(cand.ing.id);
+          tryCombo(i + 1, [...curr, cand], cost + cand.price, nc);
+        }
+      }
+    };
+    tryCombo(0, [], 0, new Set(barCart));
+    return best.count > 0 ? best : null;
+  };
+
+  const mostValuableBottle = computeMVB();
+  const mostValuablePurchase = computeMVP(mvpBudget);
+
   const triggerRoll = (pool) => {
     const pick = pool[Math.floor(Math.random() * pool.length)];
     const others = allCocktails.filter(c => c.name !== pick.name);
@@ -1624,11 +1762,13 @@ function CocktailApp() {
     slotIntervalRef.current = setTimeout(() => tick(60), 60);
   };
 
-  // Shake detection
-  useEffect(() => {
+  // Shake detection — only active on reroll screen, permission requested reactively
+  const shakeListenerRef = useRef(null);
+
+  const setupShakeListener = () => {
+    if (shakeListenerRef.current) return; // already listening
     let lastShake = 0;
     let lastAcc = { x: 0, y: 0, z: 0 };
-
     const handleMotion = (e) => {
       const acc = e.accelerationIncludingGravity;
       if (!acc) return;
@@ -1644,38 +1784,53 @@ function CocktailApp() {
         triggerRoll(pool);
       }
     };
+    window.addEventListener("devicemotion", handleMotion);
+    shakeListenerRef.current = handleMotion;
+    setShakePermission("granted");
+  };
 
-    const setupMotion = () => {
-      window.removeEventListener("devicemotion", handleMotion);
-      window.addEventListener("devicemotion", handleMotion);
-      setShakePermission("granted");
-    };
+  const requestShakePermission = async () => {
+    if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+      try {
+        const perm = await DeviceMotionEvent.requestPermission();
+        if (perm === "granted") setupShakeListener();
+        else setShakePermission("denied");
+      } catch (err) {
+        setShakePermission("needs-gesture");
+      }
+    } else {
+      // Android / non-iOS — no permission needed
+      setupShakeListener();
+    }
+  };
 
-    const requestPermission = async () => {
-      if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
-        // iOS — must request every page load, permission doesn't persist
-        try {
-          const perm = await DeviceMotionEvent.requestPermission();
-          if (perm === "granted") {
-            setupMotion();
-            localStorage.setItem("coc-shake-perm", "granted");
-          } else {
-            setShakePermission("denied");
-          }
-        } catch (err) {
-          // Permission call must come from a user gesture — set up a fallback button
-          setShakePermission("needs-gesture");
-        }
-      } else {
-        // Android / non-iOS — no permission needed
-        setupMotion();
-        setShakePermission("granted");
+  // On reroll screen mount, attach a one-time devicemotion listener that
+  // triggers permission request on first actual shake (reactive, not proactive)
+  useEffect(() => {
+    if (!shakeResult) return; // only on reroll screen
+    if (shakePermission === "granted") return; // already set up
+
+    // Android / no-permission-API: just start listening directly
+    if (typeof DeviceMotionEvent === "undefined" || typeof DeviceMotionEvent.requestPermission !== "function") {
+      setupShakeListener();
+      return;
+    }
+
+    // iOS: attach a passive listener that triggers permission request on first shake
+    let lastAcc = { x: 0, y: 0, z: 0 };
+    const passiveHandler = async (e) => {
+      const acc = e.accelerationIncludingGravity;
+      if (!acc) return;
+      const delta = Math.abs(acc.x - lastAcc.x) + Math.abs(acc.y - lastAcc.y) + Math.abs(acc.z - lastAcc.z);
+      lastAcc = { x: acc.x || 0, y: acc.y || 0, z: acc.z || 0 };
+      if (delta > 20) {
+        window.removeEventListener("devicemotion", passiveHandler);
+        await requestShakePermission();
       }
     };
-
-    requestPermission();
-    return () => window.removeEventListener("devicemotion", handleMotion);
-  }, [makeableCocktails, allCocktails, barCart]);
+    window.addEventListener("devicemotion", passiveHandler);
+    return () => window.removeEventListener("devicemotion", passiveHandler);
+  }, [shakeResult, shakePermission]);
 
   const allIngredients = [...new Set(
     allCocktails.flatMap(c => c.ingredients.map(i => {
@@ -2400,39 +2555,7 @@ function CocktailApp() {
                   )}
                 </div>
 
-                {/* Shake hint */}
-                {shakePermission === "granted" && makeableCocktails.length > 0 && (
-                  <div style={{
-                    fontFamily: "'Raleway', sans-serif", fontSize: "0.62rem",
-                    color: "rgba(201,168,76,0.3)", letterSpacing: "0.1em",
-                    textAlign: "center", marginBottom: 12, fontStyle: "italic",
-                  }}>
-                    or shake your phone for a random pick 📳
-                  </div>
-                )}
-                {shakePermission === "needs-gesture" && (
-                  <div style={{ textAlign: "center", marginBottom: 12 }}>
-                    <button
-                      onClick={async () => {
-                        try {
-                          const perm = await DeviceMotionEvent.requestPermission();
-                          if (perm === "granted") {
-                            window.addEventListener("devicemotion", () => {});
-                            setShakePermission("granted");
-                          }
-                        } catch(e) {}
-                      }}
-                      style={{
-                        fontFamily: "'Raleway', sans-serif", fontSize: "0.65rem",
-                        fontWeight: 600, letterSpacing: "0.1em",
-                        background: "transparent", border: "1px solid rgba(201,168,76,0.3)",
-                        color: "rgba(201,168,76,0.5)", padding: "6px 14px",
-                        borderRadius: 14, cursor: "pointer",
-                      }}>
-                      📳 Enable shake to randomize
-                    </button>
-                  </div>
-                )}
+
 
                 {/* Makeable list */}
                 {makeableCocktails.map((c, i) => renderCard(c, i))}
@@ -2443,7 +2566,7 @@ function CocktailApp() {
                     <div style={{ height: 1, background: "rgba(201,168,76,0.1)", margin: "16px 0 12px" }} />
                     <div style={{
                       fontFamily: "'Cinzel', serif", fontSize: "0.75rem",
-                      color: "rgba(201,168,76,0.4)", marginBottom: 10, letterSpacing: "0.08em",
+                      color: "rgba(201,168,76,0.75)", marginBottom: 10, letterSpacing: "0.08em",
                     }}>
                       {almostCocktails.length} Cocktails — Missing Just One Ingredient
                     </div>
@@ -2451,6 +2574,82 @@ function CocktailApp() {
                       const { missing } = getCocktailStatus(c);
                       return renderCard(c, i + 500, missing[0] || null);
                     })}
+                  </div>
+                )}
+
+                {/* Most Valuable Bottle */}
+                {mostValuableBottle && (
+                  <div style={{ marginTop: 20 }}>
+                    <div style={{ height: 1, background: "rgba(201,168,76,0.1)", margin: "0 0 14px" }} />
+                    <div style={{ fontFamily: "'Cinzel', serif", fontSize: "0.72rem", color: "rgba(201,168,76,0.75)", marginBottom: 10, letterSpacing: "0.08em" }}>
+                      🏆 Most Valuable Bottle
+                    </div>
+                    <div style={{ background: "rgba(201,168,76,0.07)", border: "1px solid rgba(201,168,76,0.2)", borderRadius: 8, padding: "14px 16px" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                        <div style={{ fontFamily: "'Cinzel', serif", fontSize: "0.95rem", color: "#C9A84C" }}>
+                          {mostValuableBottle.ing.label}
+                        </div>
+                        <div style={{ fontFamily: "'Raleway', sans-serif", fontSize: "0.72rem", color: "rgba(201,168,76,0.6)", fontWeight: 700 }}>
+                          ~${INGREDIENT_PRICES[mostValuableBottle.ing.id] || "?"}
+                        </div>
+                      </div>
+                      <div style={{ fontFamily: "'Raleway', sans-serif", fontSize: "0.75rem", color: "rgba(201,168,76,0.55)", lineHeight: 1.5 }}>
+                        Unlocks {mostValuableBottle.count} new cocktail{mostValuableBottle.count !== 1 ? "s" : ""}
+                      </div>
+                      <div style={{ fontFamily: "'Raleway', sans-serif", fontSize: "0.68rem", color: "rgba(201,168,76,0.35)", marginTop: 4, lineHeight: 1.5 }}>
+                        {mostValuableBottle.cocktails.slice(0, 4).join(" · ")}{mostValuableBottle.cocktails.length > 4 ? ` + ${mostValuableBottle.cocktails.length - 4} more` : ""}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Most Valuable Purchase */}
+                {almostCocktails.length > 0 && (
+                  <div style={{ marginTop: 20 }}>
+                    <div style={{ height: 1, background: "rgba(201,168,76,0.1)", margin: "0 0 14px" }} />
+                    <div style={{ fontFamily: "'Cinzel', serif", fontSize: "0.72rem", color: "rgba(201,168,76,0.75)", marginBottom: 10, letterSpacing: "0.08em" }}>
+                      💰 Most Valuable Purchase
+                    </div>
+                    {/* Budget slider */}
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                        <div style={{ fontFamily: "'Raleway', sans-serif", fontSize: "0.68rem", color: "rgba(201,168,76,0.45)" }}>Budget</div>
+                        <div style={{ fontFamily: "'Cinzel', serif", fontSize: "0.78rem", color: "#C9A84C" }}>${mvpBudget}</div>
+                      </div>
+                      <input
+                        type="range"
+                        min={15} max={150} step={5}
+                        value={mvpBudget}
+                        onChange={e => setMvpBudget(Number(e.target.value))}
+                        onClick={e => e.stopPropagation()}
+                        style={{ width: "100%", accentColor: "#C9A84C" }}
+                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'Raleway', sans-serif", fontSize: "0.6rem", color: "rgba(201,168,76,0.25)", marginTop: 2 }}>
+                        <span>$15</span><span>$150</span>
+                      </div>
+                    </div>
+                    {mostValuablePurchase ? (
+                      <div style={{ background: "rgba(201,168,76,0.07)", border: "1px solid rgba(201,168,76,0.2)", borderRadius: 8, padding: "14px 16px" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                          <div style={{ fontFamily: "'Raleway', sans-serif", fontSize: "0.72rem", color: "rgba(201,168,76,0.55)", fontWeight: 700 }}>
+                            Unlocks {mostValuablePurchase.count} new cocktail{mostValuablePurchase.count !== 1 ? "s" : ""}
+                          </div>
+                          <div style={{ fontFamily: "'Cinzel', serif", fontSize: "0.78rem", color: "#C9A84C" }}>
+                            ~${mostValuablePurchase.total}
+                          </div>
+                        </div>
+                        {mostValuablePurchase.items.map(item => (
+                          <div key={item.ing.id} style={{ display: "flex", justifyContent: "space-between", fontFamily: "'Raleway', sans-serif", fontSize: "0.78rem", color: "#e8d5a3", marginBottom: 4 }}>
+                            <span>· {item.ing.label}</span>
+                            <span style={{ color: "rgba(201,168,76,0.5)" }}>${item.price}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ fontFamily: "'Raleway', sans-serif", fontSize: "0.75rem", color: "rgba(201,168,76,0.3)", fontStyle: "italic", textAlign: "center", padding: "10px 0" }}>
+                        No combinations found under ${mvpBudget}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -2546,7 +2745,7 @@ function CocktailApp() {
                       color: "rgba(201,168,76,0.2)", letterSpacing: "0.15em",
                       textTransform: "uppercase", marginTop: 8,
                     }}>
-                      or tap anywhere to dismiss
+                      shake to re-roll · tap anywhere to dismiss
                     </div>
                   </div>
                 )}
