@@ -1526,6 +1526,8 @@ function CocktailApp() {
   const [slotRolling, setSlotRolling] = useState(false);
   const [slotDisplay, setSlotDisplay] = useState("");
   const slotIntervalRef = useRef(null);
+  const [makeableExpanded, setMakeableExpanded] = useState(false);
+  const [almostExpanded, setAlmostExpanded] = useState(false);
   const shakeActiveRef = useRef(false);
 
   useEffect(() => { localStorage.setItem("coc-fav", JSON.stringify([...favorites])); }, [favorites]);
@@ -1675,55 +1677,98 @@ function CocktailApp() {
 
   const computeMVP = (budget) => {
     if (barCart.size === 0) return null;
+
     const isSkip = (lower) =>
       lower.includes("garnish") || lower.includes("optional") || lower.includes("to taste") ||
       lower.includes("ice") || lower.includes("water") || lower.includes("sugar") ||
       lower.includes("salt") || lower.includes("nutmeg") || lower.includes("mint") ||
       lower.includes("twist") || lower.includes("wedge") || lower.includes("slice") ||
       lower.includes("cherry") || lower.includes("olive") || lower.includes("peel");
-    const isMakeableWith = (cocktail, cart) => {
-      for (const ingStr of cocktail.ingredients) {
-        const lower = ingStr.toLowerCase();
-        if (isSkip(lower)) continue;
-        if (!allBarIngredients.some(ing => cart.has(ing.id) && ing.keywords.some(kw => lower.includes(kw)))) return false;
-      }
-      return true;
-    };
-    const alreadyMakeable = new Set(allCocktails.filter(c => isMakeableWith(c, barCart)).map(c => c.name));
-    const countNewMakeable = (cart) => allCocktails.filter(c => !alreadyMakeable.has(c.name) && isMakeableWith(c, cart)).length;
-    const ingMap = {};
+
+    // Precompute: for each cocktail, which bar ingredient IDs are missing
+    // This avoids calling getCocktailStatus repeatedly in the inner loops
+    const cocktailMissingIds = {}; // cocktailName -> Set of missing ing IDs
+    const alreadyMakeableNames = new Set();
     for (const c of allCocktails) {
-      if (alreadyMakeable.has(c.name)) continue;
+      const missingIds = new Set();
       for (const ingStr of c.ingredients) {
         const lower = ingStr.toLowerCase();
         if (isSkip(lower)) continue;
-        if (!allBarIngredients.some(ing => barCart.has(ing.id) && ing.keywords.some(kw => lower.includes(kw)))) {
+        const matchedIng = allBarIngredients.find(ing =>
+          barCart.has(ing.id) && ing.keywords.some(kw => lower.includes(kw))
+        );
+        if (!matchedIng) {
+          // Find which bar ingredient ID this maps to
           for (const [cat, ings] of Object.entries(BAR_INGREDIENTS)) {
             for (const ing of ings) {
               if (!barCart.has(ing.id) && ing.keywords.some(kw => lower.includes(kw))) {
-                if (!ingMap[ing.id]) ingMap[ing.id] = { ing, price: INGREDIENT_PRICES[ing.id] || 99 };
+                missingIds.add(ing.id);
               }
             }
           }
         }
       }
+      if (missingIds.size === 0) alreadyMakeableNames.add(c.name);
+      else cocktailMissingIds[c.name] = missingIds;
     }
-    const candidates = Object.values(ingMap).filter(x => x.price <= budget).sort((a, b) => a.price - b.price).slice(0, 12);
+
+    // Collect candidate ingredients (not in bar cart) with price and unlock count
+    const ingMap = {};
+    for (const [name, missingIds] of Object.entries(cocktailMissingIds)) {
+      for (const id of missingIds) {
+        if (!ingMap[id]) {
+          // Find the ingredient object
+          let ingObj = null;
+          for (const [cat, ings] of Object.entries(BAR_INGREDIENTS)) {
+            const found = ings.find(i => i.id === id);
+            if (found) { ingObj = found; break; }
+          }
+          if (ingObj) ingMap[id] = { ing: ingObj, price: INGREDIENT_PRICES[id] || 99, appearsIn: 0 };
+        }
+        if (ingMap[id]) ingMap[id].appearsIn++;
+      }
+    }
+
+    // Filter by budget and sort by cocktails-per-dollar
+    const candidates = Object.values(ingMap)
+      .filter(x => x.price <= budget)
+      .map(x => ({ ...x, score: x.appearsIn / (x.price || 1) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 20);
+
     if (candidates.length === 0) return null;
+
+    // Fast makeability check using precomputed missing ID sets
+    const isMakeableWithIds = (cocktailName, addedIds) => {
+      const missing = cocktailMissingIds[cocktailName];
+      if (!missing) return false;
+      for (const id of missing) {
+        if (!addedIds.has(id)) return false;
+      }
+      return true;
+    };
+
+    const countNewMakeable = (addedIds) =>
+      Object.keys(cocktailMissingIds).filter(name => isMakeableWithIds(name, addedIds)).length;
+
+    // Knapsack search
     let best = { items: [], count: 0, total: 0 };
-    const tryCombo = (idx, curr, cost, cart) => {
-      const n = countNewMakeable(cart);
+    const tryCombo = (idx, curr, cost, addedIds) => {
+      const n = countNewMakeable(addedIds);
       if (n > best.count || (n === best.count && cost < best.total)) best = { items: [...curr], count: n, total: cost };
-      if (curr.length >= 3 || idx >= candidates.length) return;
+      if (curr.length >= 5 || idx >= candidates.length) return;
       for (let i = idx; i < candidates.length; i++) {
         const cand = candidates[i];
         if (cost + cand.price <= budget) {
-          const nc = new Set(cart); nc.add(cand.ing.id);
-          tryCombo(i + 1, [...curr, cand], cost + cand.price, nc);
+          const newIds = new Set(addedIds);
+          newIds.add(cand.ing.id);
+          tryCombo(i + 1, [...curr, cand], cost + cand.price, newIds);
         }
       }
     };
-    tryCombo(0, [], 0, new Set(barCart));
+
+    // Start with an empty added-ids set (barCart is baked into cocktailMissingIds)
+    tryCombo(0, [], 0, new Set());
     return best.count > 0 ? best : null;
   };
 
@@ -2525,10 +2570,17 @@ function CocktailApp() {
               </div>
             ) : (
               <div>
-                {/* Dice button */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                  <div style={{ fontFamily: "'Cinzel', serif", fontSize: "0.85rem", color: "#C9A84C" }}>
-                    {makeableCocktails.length > 0 ? `${makeableCocktails.length} Cocktails You Can Make` : "No exact matches yet"}
+                {/* Dice button + collapsible makeable list */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div
+                    onClick={() => setMakeableExpanded(e => !e)}
+                    style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", flex: 1 }}>
+                    <div style={{ fontFamily: "'Cinzel', serif", fontSize: "0.85rem", color: "#C9A84C" }}>
+                      {makeableCocktails.length > 0 ? `${makeableCocktails.length} Cocktails You Can Make` : "No exact matches yet"}
+                    </div>
+                    {makeableCocktails.length > 0 && (
+                      <div style={{ color: "rgba(201,168,76,0.5)", fontSize: "0.7rem", transition: "transform 0.2s", transform: makeableExpanded ? "rotate(180deg)" : "rotate(0deg)" }}>▾</div>
+                    )}
                   </div>
                   {makeableCocktails.length > 0 && (
                     <button
@@ -2539,38 +2591,33 @@ function CocktailApp() {
                       }}
                       title="Random cocktail"
                       style={{
-                        fontFamily: "'Cinzel', serif",
-                        fontSize: "1.2rem",
-                        background: "rgba(201,168,76,0.1)",
-                        border: "1px solid rgba(201,168,76,0.4)",
-                        color: "#C9A84C",
-                        borderRadius: "50%",
-                        width: 42, height: 42,
-                        cursor: "pointer",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        transition: "all 0.15s",
+                        fontFamily: "'Cinzel', serif", fontSize: "1.2rem",
+                        background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.4)",
+                        color: "#C9A84C", borderRadius: "50%", width: 42, height: 42,
+                        cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                        transition: "all 0.15s", flexShrink: 0,
                       }}>
                       🎲
                     </button>
                   )}
                 </div>
 
+                {/* Makeable list — collapsed by default */}
+                {makeableExpanded && makeableCocktails.map((c, i) => renderCard(c, i))}
 
-
-                {/* Makeable list */}
-                {makeableCocktails.map((c, i) => renderCard(c, i))}
-
-                {/* Almost makeable */}
+                {/* Almost makeable — collapsible */}
                 {almostCocktails.length > 0 && (
                   <div>
                     <div style={{ height: 1, background: "rgba(201,168,76,0.1)", margin: "16px 0 12px" }} />
-                    <div style={{
-                      fontFamily: "'Cinzel', serif", fontSize: "0.75rem",
-                      color: "rgba(201,168,76,0.75)", marginBottom: 10, letterSpacing: "0.08em",
-                    }}>
-                      {almostCocktails.length} Cocktails — Missing Just One Ingredient
+                    <div
+                      onClick={() => setAlmostExpanded(e => !e)}
+                      style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginBottom: almostExpanded ? 10 : 0 }}>
+                      <div style={{ fontFamily: "'Cinzel', serif", fontSize: "0.75rem", color: "rgba(201,168,76,0.75)", letterSpacing: "0.08em", flex: 1 }}>
+                        {almostCocktails.length} Cocktails — Missing Just One Ingredient
+                      </div>
+                      <div style={{ color: "rgba(201,168,76,0.5)", fontSize: "0.7rem", transition: "transform 0.2s", transform: almostExpanded ? "rotate(180deg)" : "rotate(0deg)" }}>▾</div>
                     </div>
-                    {almostCocktails.map((c, i) => {
+                    {almostExpanded && almostCocktails.map((c, i) => {
                       const { missing } = getCocktailStatus(c);
                       return renderCard(c, i + 500, missing[0] || null);
                     })}
